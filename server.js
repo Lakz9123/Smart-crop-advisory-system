@@ -1,3 +1,4 @@
+require("dotenv").config();
 const express = require("express");
 const mongoose = require("mongoose");
 const cors = require("cors");
@@ -399,7 +400,7 @@ app.post("/recommend", async (req, res) => {
 // ============================================
 // MONGODB CONNECTION
 // ============================================
-mongoose.connect("mongodb://127.0.0.1:27017/smartcrop")
+mongoose.connect(process.env.MONGODB_URI || "mongodb://127.0.0.1:27017/smartcrop")
   .then(() => console.log("✅ MongoDB Connected"))
   .catch(err => console.log("❌ MongoDB Error:", err));
 
