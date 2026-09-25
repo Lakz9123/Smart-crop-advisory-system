@@ -374,9 +374,14 @@ function PestDetection() {
             <div className="card-premium pest-result-card">
               <div className="pest-result-header">
                 <div>
-                  <span>Detection result</span>
+                  <span>Detection result {result.confidence && `• AI Confidence: ${result.confidence.toFixed(1)}%`}</span>
                   <h2>{result.pest.pestName}</h2>
                   <p>{result.pest.cropAffected || cropName} requires targeted monitoring and quick action.</p>
+                  {result.mlPrediction && (
+                    <p style={{ color: "var(--accent)", fontSize: "0.85rem", marginTop: "4px" }}>
+                      Model identified: {result.mlPrediction}
+                    </p>
+                  )}
                 </div>
                 <div className="pest-confidence-pill">Action needed</div>
               </div>

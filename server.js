@@ -358,12 +358,44 @@ app.post("/api/upload-pest", upload.single("image"), async (req, res) => {
     const normalizedCropName = normalizeText(cropName);
     const allPests = await Pest.find();
 
-    // Score pests based on crop affection
+    // Call ML Microservice
+    let mlPrediction = null;
+    let mlConfidence = 0;
+    try {
+      const mlResponse = await fetch("http://127.0.0.1:5001/predict", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ image_path: `uploads/${req.file.filename}` })
+      });
+      const mlData = await mlResponse.json();
+      if (mlData.success) {
+        // e.g. "Rice___Brown_Spot" -> "rice brown spot"
+        mlPrediction = normalizeText(mlData.prediction.replace(/___/g, " ").replace(/_/g, " "));
+        mlConfidence = mlData.confidence;
+      }
+    } catch (e) {
+      console.log("ML Microservice error:", e.message);
+    }
+
+    // Score pests based on crop affection + ML prediction
     const scoredPests = allPests.map(p => {
       const pestCrop = normalizeText(p.cropAffected);
-      // When detecting by image, prioritize crop matching
+      const pestSymptoms = normalizeText(p.symptoms);
+      const pestName = normalizeText(p.pestName);
+      
       const cropScore = normalizedCropName && (pestCrop === normalizedCropName ? 3 : termOverlap(normalizedCropName, pestCrop));
-      const totalScore = (cropScore || 0) * 2;
+      let mlScore = 0;
+      
+      // Only trust ML if confidence is somewhat decent
+      if (mlPrediction && mlConfidence > 20) {
+        mlScore += termOverlap(mlPrediction, pestName) * 3;
+        mlScore += termOverlap(mlPrediction, pestSymptoms);
+        if (mlPrediction.includes(pestCrop)) {
+          mlScore += 2;
+        }
+      }
+      
+      const totalScore = (cropScore || 0) * 2 + mlScore * (mlConfidence / 50);
       return { pest: p, totalScore, cropScore: cropScore || 0 };
     }).sort((a, b) => b.totalScore - a.totalScore);
 
@@ -371,16 +403,19 @@ app.post("/api/upload-pest", upload.single("image"), async (req, res) => {
       return res.json({ 
         success: true, 
         imageUrl,
-        pest: scoredPests[0].pest, 
+        pest: scoredPests[0].pest,
+        confidence: mlConfidence > 0 ? mlConfidence : null,
+        mlPrediction: mlPrediction || null,
         suggestions: scoredPests.slice(0, 3).map(s => s.pest) 
       });
     }
 
-    // If no exact crop match, return suggestions based on all pests
+    // If no exact match, return suggestions
     res.json({ 
       success: false, 
       message: "No matching pest found for this crop. Please review the suggestions below.",
       imageUrl,
+      confidence: mlConfidence > 0 ? mlConfidence : null,
       suggestions: scoredPests.slice(0, 3).map(s => s.pest) 
     });
   } catch (err) {
